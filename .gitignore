@@ -1,0 +1,23 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+.venv/
+venv/
+build/
+dist/
+*.egg-info/
+
+# Local research assets must not be committed.
+data/
+datasets/
+checkpoints/
+weights/
+outputs/
+cache/
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+*.pdf
+*.docx

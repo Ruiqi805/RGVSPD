@@ -1,0 +1,14 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rgvspd"
+version = "0.1.0"
+description = "Model-agnostic core for risk-guided visual-semantic progressive decisions"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = []
+
+[tool.setuptools]
+packages = ["rgvspd"]
