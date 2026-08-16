@@ -1,0 +1,5 @@
+image_path,class_id,class_name,split,image_id
+images/train/class_a/0001.jpg,0,class a,train,train-a-0001
+images/train/class_b/0001.jpg,1,class b,train,train-b-0001
+images/test/class_a/1001.jpg,0,class a,test,test-a-1001
+images/test/class_b/1001.jpg,1,class b,test,test-b-1001

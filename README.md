@@ -1,52 +1,109 @@
 # RG-VSPD
 
-RG-VSPD is a model-agnostic decision layer for few-shot image classification. It coordinates two heterogeneous visual predictors with a candidate-constrained semantic verifier.
+[![tests](https://github.com/Ruiqi805/RGVSPD/actions/workflows/tests.yml/badge.svg)](https://github.com/Ruiqi805/RGVSPD/actions/workflows/tests.yml)
 
-This repository intentionally contains only the compact, runnable core. Dataset loaders, pretrained weights, generated caches, full experiment outputs, and manuscripts are not included.
+RG-VSPD is a reproducible reference implementation for few-shot image classification with heterogeneous visual experts and candidate-constrained semantic verification. The repository contains the complete method pipeline: deterministic support selection, frozen DINOv2 and CLIP feature extraction, the two visual classifiers, disagreement routing, three Qwen semantic views, majority voting, caching, and a command-line runner.
 
-## Decision rule
+Datasets, pretrained weights, generated feature caches, experiment outputs, and manuscripts are intentionally not redistributed.
 
-For each query image:
+## Method
 
-1. Fuse the DINO and CLIP class-probability vectors in the shared label space.
-2. If their Top-1 predictions agree, return the fused visual Top-1 directly.
-3. If they disagree, construct the fused Top-5 candidate set and collect three constrained semantic judgments:
-   - **AttrSeek:** visible image evidence;
-   - **AttrBank:** candidate-class attributes matched to visible evidence;
-   - **FineDefics:** discriminative evidence and counter-evidence between candidates.
-4. Accept a semantic prediction only when at least two views select the same candidate. Otherwise, fall back to the fused visual Top-1.
+For every query image, RG-VSPD performs the following steps:
 
-The fused visual prediction is a fallback, not a fourth vote. Semantic outputs outside the candidate set are rejected.
+1. **DINO branch:** extract the concatenation of the normalized CLS token and mean patch token from frozen DINOv2 ViT-L/14 at 448 × 448 resolution. Fuse a linear probe and cosine-prototype classifier with equal weight.
+2. **CLIP-LPP branch:** encode the image with frozen CLIP ViT-B/16. For each class, combine its few-shot support prototype with 13 prompt text embeddings using text weight `0.88`, then classify with temperature `100`.
+3. **Visual fusion:** combine aligned class probabilities with the locked, test-independent DINO weights `0.1/0.2/0.3/0.4/0.5` for `1/2/4/8/16` shots.
+4. **Routing:** return the fused visual Top-1 directly when DINO and CLIP Top-1 agree. Otherwise, send the fused Top-5 candidates to the semantic verifier.
+5. **Semantic verification:** Qwen3.5-4B independently runs AttrSeek, AttrBank, and FineDefics. Each view must return one exact candidate ID as strict JSON.
+6. **Decision:** use a two-of-three semantic majority. If no valid majority exists, return the fused visual Top-1. The visual prediction is a fallback, not a fourth vote.
 
-## Reference configuration
+## Repository layout
 
-The reference DINO-CLIP-Qwen configuration is recorded in `rgvspd.config.REFERENCE_CONFIG`:
-
-| Component | Setting |
-| --- | --- |
-| Visual representation branch | DINOv2 ViT-L/14 |
-| Vision-language branch | CLIP ViT-B/16 |
-| Semantic verifier | Qwen3.5-4B |
-| DINO probe/prototype mixture | 0.5 / 0.5 |
-| CLIP support/text mixture | 0.12 / 0.88 |
-| CLIP temperature | 100 |
-| CLIP prompt templates | 13 |
-| Candidate count | 5 |
-| DINO fusion weight | 0.1 (1-shot), 0.2 (2-shot), 0.5 (16-shot) |
-| Support-set seeds | 1, 21, 93 |
-
-These constants document the reference instantiation. The decision core accepts probability vectors from any pair of visual models.
-
-## Quick start
-
-No third-party runtime dependency is required.
-
-```bash
-python -m examples.minimal_demo
-python -m unittest discover -s tests -v
+```text
+rgvspd/
+  cli.py          command-line entry point
+  config.py       locked reference constants
+  core.py         fusion, routing, majority, and fallback
+  data.py         manifest validation and few-shot selection
+  experiment.py   raw-image experiment runner and result export
+  pipeline.py     auditable per-image pipeline
+  prompts.py      AttrSeek, AttrBank, and FineDefics prompts
+  semantic.py     Qwen inference and resumable cache
+  visual.py       DINOv2, CLIP-LPP, linear probe, and prototypes
+tests/             dependency-light unit and integration tests
+examples/          synthetic demo and input schemas
 ```
 
-Minimal use:
+## Installation
+
+The decision layer and tests need only NumPy and Pillow:
+
+```bash
+python -m venv .venv
+source .venv/bin/activate  # Windows PowerShell: .venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -e .
+```
+
+Install the model stack for raw-image experiments:
+
+```bash
+python -m pip install -e ".[models]"
+```
+
+A CUDA GPU is strongly recommended for DINOv2 ViT-L/14 and Qwen3.5-4B. Model loading is lazy, and the unit tests do not download checkpoints.
+
+## Dataset manifest
+
+Prepare a UTF-8 CSV with one row per image:
+
+```csv
+image_path,class_id,class_name,split,image_id
+images/train/class_a/0001.jpg,0,class a,train,train-a-0001
+images/test/class_a/1001.jpg,0,class a,test,test-a-1001
+```
+
+Required columns are `image_path`, `class_id`, and `split`. Relative paths are resolved from the CSV location. Every class must have at least the requested number of images in the support split. Validate before a long run:
+
+```bash
+rgvspd validate-manifest path/to/manifest.csv
+```
+
+## Run the reference pipeline
+
+Full DINO + CLIP-LPP + Qwen run:
+
+```bash
+rgvspd run \
+  --manifest path/to/manifest.csv \
+  --output-dir outputs/dataset-shot1-seed1 \
+  --shot 1 \
+  --seed 1 \
+  --qwen-model Qwen/Qwen3.5-4B
+```
+
+Use a local Qwen checkpoint without network access:
+
+```bash
+rgvspd run \
+  --manifest path/to/manifest.csv \
+  --output-dir outputs/local-run \
+  --shot 2 \
+  --seed 21 \
+  --qwen-model /path/to/Qwen3.5-4B \
+  --local-files-only
+```
+
+Useful controls:
+
+- `--visual-only` skips Qwen but keeps the locked visual branches and router.
+- `--max-eval N` runs a small end-to-end smoke subset.
+- `--attribute-bank path.json` adds dataset-specific visible, discriminative, and negative cues to AttrBank.
+- `--eval-split val` evaluates another manifest split without changing support selection.
+
+The runner writes `run_config.json`, `metrics.json`, `predictions.json`, model feature caches, and a resumable semantic-response cache under the selected output directory.
+
+## Lightweight decision API
 
 ```python
 from rgvspd import decide_for_shot
@@ -63,33 +120,29 @@ result = decide_for_shot(
     },
 )
 
-print(result.prediction)  # 0
-print(result.reason)      # semantic_majority
+print(result.prediction)
+print(result.reason)
 ```
 
-In a full system, call the semantic verifier only when `result.routed` would be true. The two-phase API `prepare_visual_decision` followed by `finalize_decision` supports that execution pattern without making unnecessary verifier calls.
+Run the synthetic demo and all dependency-light tests:
 
-## Integration contract
+```bash
+python -m examples.minimal_demo
+python -m unittest discover -s tests -v
+```
 
-- `class_ids`, DINO probabilities, and CLIP probabilities must use the same class order.
-- Inputs must be finite, non-negative scores with a positive sum; the core normalizes them before fusion.
-- Semantic views must return one exact candidate ID as strict JSON: `{"best_class_id":"<candidate_id>"}`.
-- Routing depends only on DINO/CLIP Top-1 disagreement, not on the fusion weight.
-- Candidate ranking and all tie handling are deterministic.
+## Reproducibility contract
 
-## Repository scope
+- Class IDs and all probability arrays must share one class order.
+- Support images are sampled only from the configured support split with seeds `1`, `21`, or `93`.
+- Visual weights are fixed before test evaluation; test labels are never accepted by prompt-building APIs.
+- Semantic choices outside the fused candidate set are invalid.
+- Invalid or malformed semantic outputs are excluded from the majority.
+- Ties and candidate ordering are deterministic.
+- Feature and semantic caches are validated against their inputs before reuse.
 
-Included:
+See [docs/reproduction.md](docs/reproduction.md) for the full checklist and expected output files.
 
-- score-level fusion and deterministic Top-5 construction;
-- disagreement-based routing;
-- strict candidate-response validation;
-- three-view majority control and visual fallback;
-- prompt-view templates and unit tests.
+## Scope and limitations
 
-Excluded:
-
-- datasets or few-shot splits;
-- DINO, CLIP, or Qwen checkpoints;
-- training and large-scale benchmark runners;
-- generated predictions, caches, and manuscript files.
+This repository enables method-level reproduction, but it does not claim that benchmark tables can be regenerated without obtaining the corresponding public datasets and pretrained checkpoints. Dataset download terms and model licenses remain the responsibility of the reproducer. Citation metadata will be added after an archival publication is available.

@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-from collections import Counter
-from dataclasses import dataclass
 import math
-from typing import Mapping, Sequence
+from collections import Counter
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 
 from .config import REFERENCE_CONFIG, dino_weight_for_shot
-
 
 SEMANTIC_VIEWS = ("attrseek", "attrbank", "finedefics")
 

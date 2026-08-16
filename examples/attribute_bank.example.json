@@ -1,0 +1,9 @@
+{
+  "classes": {
+    "0": {
+      "visible_attributes": ["visible attribute one", "visible attribute two"],
+      "discriminative_cues": ["cue separating class 0 from similar candidates"],
+      "negative_cues": ["visual evidence that contradicts class 0"]
+    }
+  }
+}
