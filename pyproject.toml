@@ -4,11 +4,25 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "rgvspd"
-version = "0.1.0"
-description = "Model-agnostic core for risk-guided visual-semantic progressive decisions"
+version = "0.2.0"
+description = "Reference implementation of risk-guided visual-semantic progressive decisions"
 readme = "README.md"
 requires-python = ">=3.10"
-dependencies = []
+dependencies = [
+  "numpy>=1.24",
+  "Pillow>=9.5",
+]
+
+[project.optional-dependencies]
+models = [
+  "accelerate>=1.0",
+  "torch>=2.6",
+  "torchvision>=0.21",
+  "transformers>=4.57.0",
+]
+
+[project.scripts]
+rgvspd = "rgvspd.cli:main"
 
 [tool.setuptools]
 packages = ["rgvspd"]

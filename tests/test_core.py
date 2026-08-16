@@ -12,7 +12,6 @@ from rgvspd import (
     prepare_visual_decision,
 )
 
-
 CLASS_IDS = ["0", "1", "2", "3", "4", "5"]
 
 
@@ -20,11 +19,13 @@ class ReferenceConfigTests(unittest.TestCase):
     def test_reported_shot_weights(self) -> None:
         self.assertEqual(dino_weight_for_shot(1), 0.1)
         self.assertEqual(dino_weight_for_shot(2), 0.2)
+        self.assertEqual(dino_weight_for_shot(4), 0.3)
+        self.assertEqual(dino_weight_for_shot(8), 0.4)
         self.assertEqual(dino_weight_for_shot(16), 0.5)
 
     def test_unreported_shot_is_explicit(self) -> None:
         with self.assertRaises(ValueError):
-            dino_weight_for_shot(4)
+            dino_weight_for_shot(3)
 
 
 class DecisionTests(unittest.TestCase):
